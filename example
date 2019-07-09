@@ -1,6 +1,7 @@
 
 
+## per year summary – mean displacement and highway miles per gallon
 point.data <- mpg %>% group_by(year) %>% summarise(mean_hwy=mean(hwy), mean_displ=mean(displ))
 
-## 
-bar_data <- mpg %>% group_by(year) %>% count(cyl) %>% left_join(point.data)
+## per year, number of models with the  given number of cylinders
+bar.data <- mpg %>% group_by(year) %>% count(cyl) %>% left_join(point.data)

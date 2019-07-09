@@ -1,33 +1,36 @@
-GeomFafik <- ggproto("GeomFafik", 
-               Geom, 
-               required_aes=c("xmin", "ymin", "xmax", "ymax"),
-               default_aes=aes(shape=19, colour="black"),
-               draw_key=draw_key_blank(),
-               draw_panel=function(data, panel_params, coord) {
-                  
-                  coords <- coord$transform(data, panel_params)
+library(ggplot2)
+library(grid)
 
-                  w <- coords$xmax - coords$xmin
-                  h <- coords$ymax - coords$ymin
-                  x <- coords$xmin + w/2
-                  y <- coords$ymin + h/2
-                  grob1 <- grid::rectGrob(x, y, width=w, height=h,
-                                          gp=gpar(col=coord$colour))
-                  grob2 <- grid::pointsGrob(x=x, y=y,
-                                            gp=gpar(col=coord$colour))
-                   gTree("fafik_grob", children=gList(grob1, grob2))
-               })
-
-
-geom_fafik <- function(mapping = NULL, data = NULL, stat = "identity",
-                              position = "identity", na.rm = FALSE, show.legend = NA, 
-                              inherit.aes = TRUE, ...) {
-  layer(
-    geom = GeomFafik, mapping = mapping,  data = data, stat = stat, 
-    position = position, show.legend = show.legend, inherit.aes = inherit.aes,
-    params = list(na.rm = na.rm, ...)
-  )
-}
+## GeomFafik <- ggproto("GeomFafik", 
+##                Geom, 
+##                required_aes=c("xmin", "ymin", "xmax", "ymax"),
+##                default_aes=aes(shape=19, colour="black"),
+##                draw_key=draw_key_blank(),
+##                draw_panel=function(data, panel_params, coord) {
+##                   
+##                   coords <- coord$transform(data, panel_params)
+##
+##                   w <- coords$xmax - coords$xmin
+##                   h <- coords$ymax - coords$ymin
+##                   x <- coords$xmin + w/2
+##                   y <- coords$ymin + h/2
+##                   grob1 <- grid::rectGrob(x, y, width=w, height=h,
+##                                           gp=gpar(col=coord$colour))
+##                   grob2 <- grid::pointsGrob(x=x, y=y,
+##                                             gp=gpar(col=coord$colour))
+##                    gTree("fafik_grob", children=gList(grob1, grob2))
+##                })
+##
+##
+## geom_fafik <- function(mapping = NULL, data = NULL, stat = "identity",
+##                               position = "identity", na.rm = FALSE, show.legend = NA, 
+##                               inherit.aes = TRUE, ...) {
+##   layer(
+##     geom = GeomFafik, mapping = mapping,  data = data, stat = stat, 
+##     position = position, show.legend = show.legend, inherit.aes = inherit.aes,
+##     params = list(na.rm = na.rm, ...)
+##   )
+## }
 
 
 
@@ -125,57 +128,52 @@ geom_pie_widget2 <- function(mapping = NULL, data = NULL, stat = "identity",
   )
 }
 
+
+
+## calculate the mini barplot
 .bar_widget_bars <- function(x, y, w, h, v, fill) {
 
      nv <- length(v)
-     v <- h * v / max(v)
+     v <- h * v / max(v)  # scale the values
 
-     dx <- w / nv
+     dx <- w / nv         # width of a bar
+
+     # xx and yy are the mid positions of the rectangles
      xx <- x - w/2 + seq(dx/2, w - dx/2, length.out=nv)
      yy <- y - h/2 + v/2 
+
+     ## widths and heights of the rectangles
      ww <- rep(dx, nv)
      hh <- v
 
-
      list(rectGrob(xx, yy, ww, hh, gp=gpar(fill=fill)))
-
 }
 
 
-.bar_widget_draw <- function(data, panel_params, coord, wgdata) {
+## draw a mini barplot
+.bar_widget_draw_group <- function(data, panel_params, coord, wgdata) {
 
-     coords <- coord$transform(data, panel_params)
-     print(coords)
+     ct <- coord$transform(data, panel_params)
+     print(data)
+     print(str(panel_params))
+     print(coord$transform)
+     print(ct)
 
-     w <- (coords$xmax - coords$xmin)[1]
-     h <- (coords$ymax - coords$ymin)[1]
-     x <- (coords$xmin + w/2)[1]
-     y <- (coords$ymin + h/2)[1]
+     grobs <- .bar_widget_bars(x=ct$x[1], y=ct$y[1], w=ct$width[1], h=ct$height[1], v=data$value, fill=ct$fill)
 
-
-     grob1 <- grid::rectGrob(x, y, width=w, height=h, gp=gpar(col=coord$colour))
-     grob2 <- grid::pointsGrob(x=x, y=y, gp=gpar(col=coord$colour))
-     
-     grobss <- .bar_widget_bars(x=x, y=y, w=w, h=h, v=data$value, fill=coords$fill)
-     #grobss <- c(grobss, list(grob1, grob2))
-
-     class(grobss) <- "gList"
-     gTree("fafik_grob", children=grobss)
- 
-
+     class(grobs) <- "gList"
+     gTree("bar_widget_grob", children=grobs)
 }
 
-
+## the widget for the mini barplot
 GeomBarWidget <- ggproto("GeomPieWidget",
   Geom,
-  required_aes=c("xmin", "ymin", "xmax", "ymax", "group", "value"),
+  required_aes=c("x", "y", "width", "height", "group", "value"),
   default_aes=aes(shape=19, colour="black", fill=NULL, labels=NULL),
   draw_key=draw_key_blank(),
-  draw_group=.bar_widget_draw,
+  draw_group=.bar_widget_draw_group,
   extra_params=c("na.rm")
 )
-
-
 
 geom_bar_widget <- function(mapping = NULL, data = NULL, stat = "identity",
                               position = "identity", na.rm = FALSE, show.legend = FALSE, 
@@ -186,6 +184,8 @@ geom_bar_widget <- function(mapping = NULL, data = NULL, stat = "identity",
     params = list(na.rm = na.rm, ...)
   )
 }
+
+
 
 GeomTestText <- ggproto("GeomTestText",
   Geom,
@@ -199,26 +199,26 @@ GeomTestText <- ggproto("GeomTestText",
 
 ## the variants for additional data
 
-GeomPieWidget <- ggproto("GeomPieWidget",
-  Geom,
-  required_aes=c("xmin", "ymin", "xmax", "ymax"),
-  default_aes=aes(shape=19, colour="black"),
-  draw_key=draw_key_blank(),
-  draw_panel=.pie_widget_draw,
-  extra_params=c("na.rm", "check_overlap", "wgdata")
-)
-
-
-geom_pie_widget <- function(mapping = NULL, data = NULL, stat = "identity",
-                              position = "identity", na.rm = FALSE, show.legend = FALSE, 
-                              inherit.aes = TRUE, check_overlap=FALSE, wgdata=NULL, ...) {
-  layer(
-    geom = GeomPieWidget, mapping = mapping,  data = data, stat = stat, 
-    position = position, show.legend = show.legend, inherit.aes = inherit.aes,
-    params = list(na.rm = na.rm, wgdata=wgdata,
-    check_overlap=check_overlap, ...)
-  )
-}
+##  GeomPieWidget <- ggproto("GeomPieWidget",
+##    Geom,
+##    required_aes=c("xmin", "ymin", "xmax", "ymax"),
+##    default_aes=aes(shape=19, colour="black"),
+##    draw_key=draw_key_blank(),
+##    draw_panel=.pie_widget_draw,
+##    extra_params=c("na.rm", "check_overlap", "wgdata")
+##  )
+##
+##
+##  geom_pie_widget <- function(mapping = NULL, data = NULL, stat = "identity",
+##                                position = "identity", na.rm = FALSE, show.legend = FALSE, 
+##                                inherit.aes = TRUE, check_overlap=FALSE, wgdata=NULL, ...) {
+##    layer(
+##      geom = GeomPieWidget, mapping = mapping,  data = data, stat = stat, 
+##      position = position, show.legend = show.legend, inherit.aes = inherit.aes,
+##      params = list(na.rm = na.rm, wgdata=wgdata,
+##      check_overlap=check_overlap, ...)
+##    )
+##  }
 
 
 
