@@ -245,6 +245,8 @@ GeomWidgetPlanet <- ggproto("GeomWidgetPlanet",
 )
 
 
+#' @rdname geom_widget
+#' @export
 geom_widget_planet <- function(mapping = NULL, data = NULL, stat = "identity",
                               position = "identity", na.rm = FALSE, show.legend = TRUE, 
                               inherit.aes = TRUE, ...) {
@@ -317,21 +319,25 @@ GeomWidgetBar <- ggproto("GeomWidgetBar",
   extra_params=c("na.rm")
 )
 
-
-
-#' @mapping result of the `aes()` function
-#' @param data a data frame
-#' @param stat
+#' @rdname geom_widget
 #' @export
-geom_widget_bar <- function(mapping = NULL, data = NULL, stat = "identity",
-                              position = "identity", na.rm = FALSE, show.legend = TRUE, 
+geom_widget_bar <- function(mapping = NULL, data = NULL, 
+                              show.legend = TRUE, 
                               inherit.aes = TRUE, ...) {
   layer(
-    geom = GeomWidgetBar, mapping = mapping,  data = data, stat = stat, 
-    position = position, show.legend = show.legend, inherit.aes = inherit.aes,
-    params = list(na.rm = na.rm, ...)
+    geom = GeomWidgetBar, mapping = mapping,  data = data, stat = "identity", 
+    position = "identity", show.legend = show.legend, inherit.aes = inherit.aes,
+    params = list(na.rm = FALSE, ...)
   )
 }
 
 
-
+#' A collection of plotting widgets
+#'
+#' A collections of widgets (mini plots) which can be placed anywhere on the figure
+#'
+#'
+#' @mapping result of the `aes()` function
+#' @param data a data frame
+#' @name geom_widget
+NULL
