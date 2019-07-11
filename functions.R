@@ -1,36 +1,40 @@
 library(ggplot2)
 library(grid)
 
-## GeomFafik <- ggproto("GeomFafik", 
-##                Geom, 
-##                required_aes=c("xmin", "ymin", "xmax", "ymax"),
-##                default_aes=aes(shape=19, colour="black"),
-##                draw_key=draw_key_blank(),
-##                draw_panel=function(data, panel_params, coord) {
-##                   
-##                   coords <- coord$transform(data, panel_params)
-##
-##                   w <- coords$xmax - coords$xmin
-##                   h <- coords$ymax - coords$ymin
-##                   x <- coords$xmin + w/2
-##                   y <- coords$ymin + h/2
-##                   grob1 <- grid::rectGrob(x, y, width=w, height=h,
-##                                           gp=gpar(col=coord$colour))
-##                   grob2 <- grid::pointsGrob(x=x, y=y,
-##                                             gp=gpar(col=coord$colour))
-##                    gTree("fafik_grob", children=gList(grob1, grob2))
-##                })
-##
-##
-## geom_fafik <- function(mapping = NULL, data = NULL, stat = "identity",
-##                               position = "identity", na.rm = FALSE, show.legend = NA, 
-##                               inherit.aes = TRUE, ...) {
-##   layer(
-##     geom = GeomFafik, mapping = mapping,  data = data, stat = stat, 
-##     position = position, show.legend = show.legend, inherit.aes = inherit.aes,
-##     params = list(na.rm = na.rm, ...)
-##   )
-## }
+## wrapper around widgets:
+## return a function suitable for drawing the group for the given widget
+.widget_wrap <- function(widget) {
+
+  tocall <- switch(widget, 
+    burst=.burst_widget_draw,
+    planet=.planet_widget_draw,
+    pie=.pie_widget_draw,
+    bar=.bar_widget_draw,
+    NULL
+    )
+
+  ## the function to be returned
+  f <- function(data, panel_params, coord) {
+    ct <- coord$transform(data, panel_params)
+
+    x <- ct$x[1] 
+    y <- ct$y[1]
+    w <- ct$width[1]
+    h <- ct$height[1]
+
+    grobs <- tocall(x, y, w, h, data$value, ct)
+
+    if(is(grobs, "list")) {
+      class(grobs) <- "gList"
+      grobs <- gTree("widget_grobs", children=grobs)
+    }
+
+    return(grobs)
+  }
+
+  return(f)
+}
+
 
 
 ## ------------------------------------------------------------ ##
@@ -38,7 +42,7 @@ library(grid)
 ## ------------------------------------------------------------ ##
 
 ## draw one pie slice: polygon approximating a slice
-.pie.slice <- function(x, y, w, h, start, stop, frac, res, col) {
+.pie.slice <- function(x, y, w, h, start, stop, frac, res, col, adj=0) {
   
   # commodity function converting polar to cartesian
   .a2xy <- function(a, r=1, adj=0) {
@@ -47,20 +51,20 @@ library(grid)
   }
 
   ni <- max(3, floor(res * frac)) # number of points on the polygon
-  po <- .a2xy(seq.int(start, stop, length.out=ni))
+  po <- .a2xy(seq.int(start, stop, length.out=ni), adj=adj)
 
   grid::polygonGrob(c(x, po$x), c(y, po$y), gp=grid::gpar(fill=col))
 }
 
 
 ## add labels to the pie slices
-.pie.labels <- function(x, y, w, h, v, labels, label.pos="outside") {
+.labels.circular <- function(x, y, w, h, v, labels, adj=0, label.pos="outside") {
 
-   adj <- 0
    v <- c(0, cumsum(v)/sum(v))
    dv <- diff(v)
    nv <- length(dv)
 
+   ## fractional label position
    lp <- v[1:(length(v) - 1)] + dv/2
 
    r <- 1
@@ -75,7 +79,11 @@ library(grid)
 
 
 ## call .pie.slice for each value to be shown
-.pie.whole <- function(x, y, w, h, v, fill) {
+.pie_widget_draw <- function(x, y, w, h, v, ct) {
+
+     fill <- ct$fill
+     adj  <- ct$padj[1]
+     print(ct)
 
      v <- c(0, cumsum(v)/sum(v))
      dv <- diff(v)
@@ -83,52 +91,33 @@ library(grid)
 
      res <- 50
      
-     grobss <- map(1:nv, ~ .pie.slice(x, y, w/2, h/2, v[.], v[.+1], dv[.], res, fill[.]))
+     grobs <- map(1:nv, ~ .pie.slice(x, y, w/2, h/2, v[.], v[.+1], dv[.], res, fill[.], adj=adj))
+     groblab <- .labels.circular(x, y, w, h, ct$value, ct$labels, adj=adj)
+     c(grobs, list(groblab))
 }
 
 
-## draw a pie widget using data$value
-.pie_widget_draw <- function(data, panel_params, coord, wgdata) {
-     
-     ct <- coord$transform(data, panel_params)
-
-     x <- ct$x[1] 
-     y <- ct$y[1]
-     w <- ct$width[1]
-     h <- ct$height[1]
-
-     grobs <- .pie.whole(x=ct$x[1], y=ct$y[1], w=ct$width[1], h=ct$height[1], v=data$value, fill=ct$fill)
-     groblab <- .pie.labels(x, y, w, h, data$value, data$labels)
-
-     #grob1 <- grid::rectGrob(x, y, width=w, height=h, gp=gpar(col=coord$colour))
-     #grob2 <- grid::pointsGrob(x=x, y=y, gp=gpar(col=coord$colour))
-     
-     grobs <- c(grobs, list(groblab)) #, grob1, grob2))
-
-     class(grobs) <- "gList"
-     gTree("fafik_grob", children=grobs)
-     #groblab
-     #textGrob("test", x[1], y[1])
-}
-
-
-GeomPieWidget <- ggproto("GeomPieWidget",
+GeomWidgetPie <- ggproto("GeomWidgetPie",
   Geom,
   required_aes=c("x", "y", "width", "height", "group", "value"),
-  default_aes=aes(shape=19, fill="black", colour="black", labels=NULL),
+  default_aes=aes(shape=19, fill="black", colour="black", labels=NULL, padj=0),
   draw_key=draw_key_rect,
-  draw_group=.pie_widget_draw,
-  extra_params=c("na.rm")
+  setup_data=function(data, params) { 
+    data$padj <- params$padj
+    data
+  },
+  draw_group=.widget_wrap("pie"),
+  extra_params=c("na.rm", "padj")
 )
 
 
-geom_pie_widget <- function(mapping = NULL, data = NULL, stat = "identity",
+geom_widget_pie <- function(mapping = NULL, data = NULL, stat = "identity",
                               position = "identity", na.rm = FALSE, show.legend = TRUE, 
-                              inherit.aes = TRUE, ...) {
+                              inherit.aes = TRUE, padj=0, ...) {
   layer(
-    geom = GeomPieWidget, mapping = mapping,  data = data, stat = stat, 
+    geom = GeomWidgetPie, mapping = mapping,  data = data, stat = stat, 
     position = position, show.legend = show.legend, inherit.aes = inherit.aes,
-    params = list(na.rm = na.rm, ...)
+    params = list(na.rm = na.rm, padj=padj, ...)
   )
 }
 
@@ -142,22 +131,15 @@ geom_pie_widget <- function(mapping = NULL, data = NULL, stat = "identity",
 ## ------------------------------------------------------------ ##
 
 
-.burst_widget_draw <- function(data, panel_params, coord, wgdata) {
-
-  ct <- coord$transform(data, panel_params)
-
-  x <- ct$x[1] 
-  y <- ct$y[1]
-  w <- ct$width[1]
-  h <- ct$height[1]
+.burst_widget_draw <- function(x, y, w, h, v, ct) {
 
   # plot areas, so sqrt 
-  v <- sqrt(data$value) 
+  v <- sqrt(v)
   v <- v / max(v) / 2 
   n <- length(v) 
   nn <- 100 
    
-  # commodity function for turning polar into cartesian 
+  # commodity fuction for turning polar into cartesian 
   a2xy <- function(a, r = 0.5, adj=0) { 
     t <- pi * (0.5  - 2 * a) - pi * adj/180 
     list( x=x + r * w * cos(t), y=y + r * h * sin(t) ) 
@@ -166,15 +148,14 @@ geom_pie_widget <- function(mapping = NULL, data = NULL, stat = "identity",
   # positions of the pie fragments
   rad <- seq.int(0, 1, length.out=n+1)
 
-  grobs <- map(1:n, ~ {
+  grobs <- purrr::map(1:n, ~ {
     ni <- max(3, floor(nn * 1/n))
     po <- a2xy(seq.int(rad[.], rad[.+1], length.out=ni), r=v[.])
     grid::polygonGrob(c(x, po$x), c(y, po$y), 
-			gp=grid::gpar(fill=ct$fill))
+			gp=grid::gpar(fill=ct$fill[.]))
   })
 
-     class(grobs) <- "gList"
-     gTree("bar_widget_grob", children=grobs)
+  return(grobs)
 
 
 # if(!is.null(labels)) {
@@ -188,25 +169,31 @@ geom_pie_widget <- function(mapping = NULL, data = NULL, stat = "identity",
 
 
 
-GeomBurstWidget <- ggproto("GeomBurstWidget",
+GeomWidgetBurst <- ggproto("GeomWidgetBurst",
   Geom,
   required_aes=c("x", "y", "width", "height", "group", "value"),
-  default_aes=aes(shape=19, fill="black", colour="black", labels=NULL),
+  #default_aes=aes(shape=19, fill="black", colour="black", labels=NULL),
+  default_aes=aes(shape=19, colour="black", alpha=NA, fill=NA, labels=NULL),
   draw_key=draw_key_rect,
-  draw_group=.burst_widget_draw,
+  draw_group=.widget_wrap("burst"),
   extra_params=c("na.rm")
 )
 
 
-geom_burst_widget <- function(mapping = NULL, data = NULL, stat = "identity",
+geom_widget_burst <- function(mapping = NULL, data = NULL, stat = "identity",
                               position = "identity", na.rm = FALSE, show.legend = TRUE, 
                               inherit.aes = TRUE, ...) {
   layer(
-    geom = GeomBurstWidget, mapping = mapping,  data = data, stat = stat, 
+    geom = GeomWidgetBurst, mapping = mapping,  data = data, stat = stat, 
     position = position, show.legend = show.legend, inherit.aes = inherit.aes,
     params = list(na.rm = na.rm, ...)
   )
 }
+
+
+## ------------------------------------------------------------ ##
+## Stacked widget: horizontal or vertical stacked bar           ##
+## ------------------------------------------------------------ ##
 
 
 
@@ -218,22 +205,17 @@ geom_burst_widget <- function(mapping = NULL, data = NULL, stat = "identity",
 ## ------------------------------------------------------------ ##
 
 
-## draw a pie widget using data$value
-.planet_widget_draw <- function(data, panel_params, coord, wgdata) {
+## draw a planet widget 
+.planet_widget_draw <- function(x, y, w, h, v, ct) {
      
-  ct <- coord$transform(data, panel_params)
-  print(ct)
-
-  v <- sqrt(data$value)
+  v <- sqrt(v)
   dv <- v/sum(v)
   v <- c(0, cumsum(v)/sum(v))
   nv <- length(dv)
   vmax <- max(dv)
 
-  x <- ct$x[1] 
-  y <- ct$y[1]
-  w <- ct$width[1] / 2
-  h <- ct$height[1] / 2
+  w <- w / 2
+  h <- h / 2
   nn <- 100             # "resolution"
 
   adj <- 0
@@ -246,28 +228,28 @@ geom_burst_widget <- function(mapping = NULL, data = NULL, stat = "identity",
 
   pos <- a2xy(v)
 
-  grobs <- pointsGrob(pos$x, pos$y, pch=ct$shape, 
+  pointsGrob(pos$x, pos$y, pch=ct$shape, 
     gp=gpar(col=alpha(ct$fill, ct$alpha), fill=alpha(ct$fill, ct$alpha),
-    fontsize=v * ct$psize[1] * .pt))
-
-  grobs
+    fontsize=v * ct$size[1] * .pt))
 }
 
-GeomPlanetWidget <- ggproto("GeomPlanetWidget",
+
+GeomWidgetPlanet <- ggproto("GeomWidgetPlanet",
   Geom,
   required_aes=c("x", "y", "width", "height", "group", "value"),
-  default_aes=aes(shape=19, psize=10, fill=NA, colour="black", labels=NULL, alpha=NA),
+  #default_aes=aes(shape=19, psize=10, fill=NA, colour="black", labels=NULL, alpha=NA),
+  default_aes=aes(shape=19, size=10, colour="black", alpha=NA, fill=NA, labels=NULL),
   draw_key=draw_key_rect,
-  draw_group=.planet_widget_draw,
-  extra_params=c("na.rm", "psize")
+  draw_group=.widget_wrap("planet"),
+  extra_params=c("na.rm")
 )
 
 
-geom_planet_widget <- function(mapping = NULL, data = NULL, stat = "identity",
+geom_widget_planet <- function(mapping = NULL, data = NULL, stat = "identity",
                               position = "identity", na.rm = FALSE, show.legend = TRUE, 
                               inherit.aes = TRUE, ...) {
   layer(
-    geom     = GeomPlanetWidget, 
+    geom     = GeomWidgetPlanet, 
     mapping  = mapping,  
     data     = data, 
     stat     = stat, 
@@ -290,8 +272,14 @@ geom_planet_widget <- function(mapping = NULL, data = NULL, stat = "identity",
 ## Mini barplot                                                 ##
 ## ------------------------------------------------------------ ##
 
-## calculate the mini barplot
-.bar_widget_bars <- function(x, y, w, h, v, fill) {
+#' @param x,y coordinates of the center of the area of the widget
+#' @param w,h width and height of the widget
+#' @param v numeric vector of values
+#' @labels text to show next to widget features
+#' @plot whether to plot immediately (FALSE: just return a list of grobs)
+#' @export
+widget_bar <- function(x, y, w, h, v, 
+                       fill="grey", col="black", labels=NULL, plot=TRUE) {
 
      nv <- length(v)
      v <- h * v / max(v)  # scale the values
@@ -306,36 +294,40 @@ geom_planet_widget <- function(mapping = NULL, data = NULL, stat = "identity",
      ww <- rep(dx, nv)
      hh <- v
 
-     list(rectGrob(xx, yy, ww, hh, gp=gpar(fill=fill)))
+     list(rectGrob(xx, yy, ww, hh, 
+      gp=gpar(col=col, fill=fill)))
 }
 
 
-## draw a mini barplot
-.bar_widget_draw_group <- function(data, panel_params, coord, wgdata) {
-
-     ct <- coord$transform(data, panel_params)
-
-     grobs <- .bar_widget_bars(x=ct$x[1], y=ct$y[1], w=ct$width[1], h=ct$height[1], v=data$value, fill=ct$fill)
-
-     class(grobs) <- "gList"
-     gTree("bar_widget_grob", children=grobs)
+## wrapper around widget_bar()
+.bar_widget_draw <- function(x, y, w, h, v, ct) {
+  fill <- alpha(ct$fill, ct$alpha)
+  col  <- alpha(ct$colour, ct$alpha)
+  widget_bar(x, y, w, h, v, fill, col, plot=FALSE)
 }
+
 
 ## the widget for the mini barplot
-GeomBarWidget <- ggproto("GeomPieWidget",
+GeomWidgetBar <- ggproto("GeomWidgetBar",
   Geom,
   required_aes=c("x", "y", "width", "height", "group", "value"),
-  default_aes=aes(shape=19, colour="black", fill=NULL, labels=NULL),
+  default_aes=aes(shape=19, colour="black", alpha=NA, fill=NA, labels=NULL),
   draw_key=draw_key_rect,
-  draw_group=.bar_widget_draw_group,
+  draw_group=.widget_wrap("bar"),
   extra_params=c("na.rm")
 )
 
-geom_bar_widget <- function(mapping = NULL, data = NULL, stat = "identity",
+
+
+#' @mapping result of the `aes()` function
+#' @param data a data frame
+#' @param stat
+#' @export
+geom_widget_bar <- function(mapping = NULL, data = NULL, stat = "identity",
                               position = "identity", na.rm = FALSE, show.legend = TRUE, 
                               inherit.aes = TRUE, ...) {
   layer(
-    geom = GeomBarWidget, mapping = mapping,  data = data, stat = stat, 
+    geom = GeomWidgetBar, mapping = mapping,  data = data, stat = stat, 
     position = position, show.legend = show.legend, inherit.aes = inherit.aes,
     params = list(na.rm = na.rm, ...)
   )
